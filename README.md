@@ -21,7 +21,7 @@ Caesar/
 ├── rag/                 # RAG 시스템
 │   ├── vector_store.py  # 벡터 스토어
 │   └── retriever.py     # 검색 및 생성
-├── backend/             # FastAPI 백엔드
+├── app/                 # FastAPI 백엔드
 │   ├── models/          # DB 모델
 │   ├── routers/         # API 라우터
 │   ├── database.py      # DB 설정
