@@ -9,11 +9,14 @@ import os
 from datetime import datetime, timedelta
 from typing import Dict, Any, List
 
-# 프로젝트 경로 추가1
+# 프로젝트 경로 추가
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Slack Bot Token 환경변수 설정
-SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
 
 from mcp_servers.google_drive_mcp import GoogleDriveMCP
 from mcp_servers.slack_mcp import SlackMCP
@@ -44,7 +47,7 @@ class IntegrationTester:
                 return False
 
             # 기능 테스트
-            print("📋 파일 목록 조회 중....")
+            print("📋 파일 목록 조회 중...")
             files = await drive.list_files(max_results=5)
             if files:
                 self.results["google_drive"]["features"].append(
@@ -200,21 +203,36 @@ class IntegrationTester:
             # 사용 가능한 도구 조회
             print("🔧 사용 가능한 도구 조회...")
             tools = await notion.get_available_tools()
-            self.results["notion"]["features"].append(f"Smithery 연결 성공")
-            print(f"   ✅ Smithery 서비스 연결 성공")
+            if tools:
+                self.results["notion"]["features"].append(f"도구 {len(tools)}개")
+                print(f"   ✅ 사용 가능한 도구: {len(tools)}개")
+                for tool in tools[:5]:  # 처음 5개만 표시
+                    print(f"      - {tool}")
+                if len(tools) > 5:
+                    print(f"      ... 외 {len(tools) - 5}개 더")
+
+            # 검색 기능 테스트
+            print("🔍 검색 기능 테스트...")
+            search_results = await notion.search("테스트", filter_type=None)
+            self.results["notion"]["features"].append(
+                f"검색 결과: {len(search_results)}개"
+            )
+            print(f"   ✅ 검색 완료: {len(search_results)}개 결과")
+
+            # 데이터베이스 쿼리 테스트
+            print("📊 데이터베이스 쿼리 테스트...")
+            db_results = await notion.query_database("sample_db_id")
+            self.results["notion"]["features"].append(f"DB 쿼리: {len(db_results)}개")
+            print(f"   ✅ 데이터베이스 쿼리: {len(db_results)}개 결과")
 
             # API 상태 확인
-            print("🔍 Notion API 상태 확인...")
+            print("⚙️ API 상태 확인...")
             try:
-                # Notion API 호출 테스트 (가능한 경우)
-                api_status = (
-                    await notion.call_custom_tool("notion_status")
-                    if "notion_status" in tools
-                    else None
-                )
+                api_status = await notion.call_custom_tool("notion_status")
                 if api_status:
                     self.results["notion"]["features"].append("API 호출 성공")
-                    print("   ✅ Notion API 호출 성공")
+                    print(f"   ✅ API 상태: {api_status.get('status', 'Unknown')}")
+                    print(f"   ✅ 프록시: {api_status.get('proxy', 'Unknown')}")
                 else:
                     self.results["notion"]["features"].append("Smithery 프록시 작동")
                     print("   ✅ Smithery 프록시 서비스 작동 중")
@@ -224,7 +242,9 @@ class IntegrationTester:
 
             await notion.disconnect()
             self.results["notion"]["status"] = "✅"
-            self.results["notion"]["details"] = "Smithery 프록시 연결 성공"
+            self.results["notion"][
+                "details"
+            ] = f"{len(tools)}개 도구 사용 가능, Smithery 프록시 연결"
             return True
 
         except Exception as e:
