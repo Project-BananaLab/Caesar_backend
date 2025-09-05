@@ -44,7 +44,7 @@ class IntegrationTester:
                 return False
 
             # 기능 테스트
-            print("📋 파일 목록 조회 중...")
+            print("📋 파일 목록 조회 중....")
             files = await drive.list_files(max_results=5)
             if files:
                 self.results["google_drive"]["features"].append(
