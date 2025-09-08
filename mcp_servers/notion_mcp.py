@@ -1,11 +1,13 @@
 """
 Notion MCP 서버 연결 모듈
-통합 테스트에서 사용되는 기능들을 포함합니다.
+실제 Notion API와 연동하여 작동합니다.
 """
 
 import os
 from typing import Dict, Any, List, Optional
 import asyncio
+import aiohttp
+import json
 
 
 class NotionMCP:
@@ -15,23 +17,55 @@ class NotionMCP:
         self.token = token or os.getenv("NOTION_TOKEN")
         self.client = None
         self.connected = False
+        self.base_url = "https://api.notion.com/v1"
+        self.session = None
 
     async def connect(self) -> bool:
-        """MCP 서버 연결 (Smithery 프록시 사용)"""
+        """MCP 서버 연결"""
         try:
-            print("Notion MCP 서버에 연결 중... (Smithery 프록시)")
-            # 시뮬레이션된 연결
-            await asyncio.sleep(0.1)
-            self.connected = True
-            print("✅ Notion MCP 서버 연결 성공 (Smithery 프록시)")
-            return True
+            if not self.token:
+                print("❌ NOTION_TOKEN이 설정되지 않았습니다.")
+                return False
+
+            print("Notion MCP 서버에 연결 중...")
+
+            # aiohttp 세션 생성
+            self.session = aiohttp.ClientSession()
+
+            # 토큰 검증 (사용자 정보 조회)
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+                "Notion-Version": "2022-06-28",
+            }
+
+            async with self.session.get(
+                f"{self.base_url}/users/me", headers=headers
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    self.connected = True
+                    print(
+                        f"✅ Notion MCP 서버 연결 성공 - 사용자: {data.get('name', 'Unknown')}"
+                    )
+                    return True
+                else:
+                    print(f"❌ Notion 인증 실패: HTTP {response.status}")
+                    return False
+
         except Exception as e:
             print(f"Notion 연결 실패: {e}")
+            if self.session:
+                await self.session.close()
+                self.session = None
             return False
 
     async def disconnect(self):
         """MCP 서버 연결 해제"""
         self.connected = False
+        if self.session:
+            await self.session.close()
+            self.session = None
         print("Notion MCP 서버 연결 해제")
 
     async def get_available_tools(self) -> List[str]:
@@ -155,38 +189,31 @@ class NotionMCP:
 
     async def search(self, query: str, filter_type: str = None) -> List[Dict[str, Any]]:
         """검색"""
-        if not self.connected:
+        if not self.connected or not self.session:
             raise Exception("연결되지 않음")
 
-        await asyncio.sleep(0.3)
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json",
+                "Notion-Version": "2022-06-28",
+            }
 
-        # 시뮬레이션된 검색 결과
-        results = [
-            {
-                "id": "search_result_1",
-                "object": "page",
-                "created_time": "2024-01-15T10:00:00.000Z",
-                "properties": {
-                    "title": {
-                        "title": [{"text": {"content": f"'{query}' 검색 결과 1"}}]
-                    }
-                },
-                "url": "https://notion.so/search_result_1",
-            },
-            {
-                "id": "search_result_2",
-                "object": "page",
-                "created_time": "2024-01-14T15:30:00.000Z",
-                "properties": {
-                    "title": {
-                        "title": [{"text": {"content": f"'{query}' 관련 페이지"}}]
-                    }
-                },
-                "url": "https://notion.so/search_result_2",
-            },
-        ]
+            data = {"query": query}
+            if filter_type:
+                data["filter"] = {"value": filter_type, "property": "object"}
 
-        return results
+            async with self.session.post(
+                f"{self.base_url}/search", headers=headers, json=data
+            ) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return result.get("results", [])
+                else:
+                    raise Exception(f"HTTP {response.status}")
+
+        except Exception as e:
+            raise Exception(f"Notion 검색 중 오류: {e}")
 
     async def append_block(self, page_id: str, blocks: List[Dict[str, Any]]) -> bool:
         """블록 추가"""

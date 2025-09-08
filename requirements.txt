@@ -20,6 +20,7 @@ psycopg2-binary==2.9.9
 langchain==0.1.0
 langgraph==0.0.20
 langchain-community==0.0.10
+langchain-openai==0.0.5
 
 # RAG 관련
 # chromadb==0.4.18  # Vector DB
@@ -31,6 +32,10 @@ google-auth==2.25.0
 google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.1.1
 google-api-python-client==2.110.0
+
+# HTTP 클라이언트 (실제 API 연동용)
+aiohttp==3.9.1
+httpx==0.25.2
 
 # Slack API
 slack-sdk==3.26.0
