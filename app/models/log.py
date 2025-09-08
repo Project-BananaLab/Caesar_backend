@@ -14,7 +14,7 @@ class ActivityLog(Base):
     __tablename__ = "activity_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("member.user_id"), nullable=True)
     action = Column(String(100), nullable=False)  # 수행된 액션
     resource = Column(String(100), nullable=True)  # 대상 리소스
     details = Column(Text, nullable=True)  # 상세 정보 (JSON 형태)
@@ -23,7 +23,7 @@ class ActivityLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # 관계 설정
-    user = relationship("User", backref="activity_logs")
+    user = relationship("Member", backref="activity_logs")
 
     def __repr__(self):
         return f"<ActivityLog(id={self.id}, action='{self.action}', user_id={self.user_id})>"

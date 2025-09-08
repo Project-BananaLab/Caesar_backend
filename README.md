@@ -24,6 +24,7 @@ Caesar/
 ├── app/                 # FastAPI 백엔드
 │   ├── models/          # DB 모델
 │   ├── routers/         # API 라우터
+│   ├── features/        # 기능
 │   ├── database.py      # DB 설정
 │   └── main.py          # FastAPI 앱
 ├── main.py              # 메인 실행 진입점
