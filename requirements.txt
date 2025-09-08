@@ -9,8 +9,8 @@ pydantic[email]==2.5.0
 sqlalchemy==2.0.23
 alembic==1.13.0
 
-# PostgreSQL 지원 (선택사항)
-psycopg2-binary==2.9.9
+# MySQL 지원
+PyMySQL==1.1.0
 
 # MCP 관련
 # TODO: 공식 MCP 클라이언트 라이브러리 추가
@@ -38,14 +38,18 @@ slack-sdk==3.26.0
 # Notion API
 notion-client==2.2.1
 
+# 보안 및 암호화
+bcrypt==4.1.2
+pycryptodome==3.19.0
+
 # 유틸리티
 python-dotenv==1.0.0
 pyyaml==6.0.1
 aiofiles==23.2.1
+requests==2.31.0
 
 # 개발/테스트
 pytest==7.4.3
 pytest-asyncio==0.21.1
 black==23.11.0
 flake8==6.1.0
-
