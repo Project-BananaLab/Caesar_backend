@@ -60,7 +60,7 @@ class Member(Base):
     created_at: Mapped[str] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
 
 # ───────── ddl-auto + seed ─────────
-from .login.security import hash_password
+from .features.login.security import hash_password
 
 def init_db_and_seed() -> None:
     """앱 시작 시: 테이블 생성 + 시드 데이터(없을 때만)"""

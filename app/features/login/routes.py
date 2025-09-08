@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from ..database import get_db, SessionLocal
+from ...database import get_db, SessionLocal
 from .auth import TOK2UID, dev_auth
 from .schemas import DevLoginBody, MemberOut, MemberUpdateIn, ApiKeysIn, ApiKeysMasked
 from .crypto import encrypt_value, decrypt_value, mask_token
