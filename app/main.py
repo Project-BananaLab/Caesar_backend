@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .login.routes import router as login_router
+from .features.login.routes import router as login_router
 from .routers.health import router as health_router
 from .database import init_db_and_seed  # 새 스키마에서는 수동으로 테이블 생성하므로 필요시에만 사용
 

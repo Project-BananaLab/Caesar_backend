@@ -6,7 +6,7 @@ AES-256-GCM 암복호 유틸
 """
 import os
 from Crypto.Cipher import AES
-from ..config import get_settings
+from ...config import get_settings
 
 _key = get_settings().enc_key  # 32바이트 키
 
