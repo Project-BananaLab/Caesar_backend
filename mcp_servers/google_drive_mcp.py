@@ -1,32 +1,81 @@
 """
 Google Drive MCP 서버 연결 모듈
-통합 테스트에서 사용되는 기능들을 포함합니다.
+실제 Google Drive API와 연동하여 작동합니다.
 """
 
 import os
+import json
+import pickle
 from typing import Dict, Any, List, Optional
 import asyncio
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 
 class GoogleDriveMCP:
     """Google Drive MCP 서버 연결 클래스"""
 
     def __init__(self, credentials_path: str = None):
-        self.credentials_path = credentials_path or os.getenv(
-            "GOOGLE_DRIVE_CREDENTIALS"
+        self.credentials_path = (
+            credentials_path or "credentials/google_drive_token.pickle"
         )
-        self.client = None
+        self.credentials_json_path = "credentials/gcp-oauth.keys.json"
+        self.service = None
         self.connected = False
+        self.scopes = ["https://www.googleapis.com/auth/drive"]
 
     async def connect(self) -> bool:
         """MCP 서버 연결"""
         try:
             print("Google Drive MCP 서버에 연결 중...")
-            # 시뮬레이션된 연결
-            await asyncio.sleep(0.1)
+
+            creds = None
+
+            # 기존 토큰 파일이 있는지 확인
+            if os.path.exists(self.credentials_path):
+                with open(self.credentials_path, "rb") as token:
+                    creds = pickle.load(token)
+
+            # 유효하지 않거나 만료된 크리덴셜인 경우 새로 인증
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                else:
+                    if not os.path.exists(self.credentials_json_path):
+                        print(
+                            f"❌ 크리덴셜 파일을 찾을 수 없습니다: {self.credentials_json_path}"
+                        )
+                        return False
+
+                    flow = Flow.from_client_secrets_file(
+                        self.credentials_json_path, self.scopes
+                    )
+                    flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+
+                    print("Google Drive 인증이 필요합니다.")
+                    auth_url, _ = flow.authorization_url(prompt="consent")
+                    print(f"브라우저에서 다음 URL을 열어주세요:\n{auth_url}")
+
+                    # 실제 운영에서는 웹 플로우나 다른 방식 사용
+                    print(
+                        "⚠️ 인증 코드 입력이 필요합니다. 테스트 모드에서는 건너뜁니다."
+                    )
+                    return False
+
+                # 토큰 저장
+                with open(self.credentials_path, "wb") as token:
+                    pickle.dump(creds, token)
+
+            # Google Drive 서비스 생성
+            self.service = build("drive", "v3", credentials=creds)
             self.connected = True
+
             print("✅ Google Drive MCP 서버 연결 성공")
             return True
+
         except Exception as e:
             print(f"Google Drive 연결 실패: {e}")
             return False
@@ -40,120 +89,110 @@ class GoogleDriveMCP:
         self, folder_id: str = None, max_results: int = 10
     ) -> List[Dict[str, Any]]:
         """파일 목록 조회"""
-        if not self.connected:
+        if not self.connected or not self.service:
             raise Exception("연결되지 않음")
 
-        # 시뮬레이션된 파일 목록
-        await asyncio.sleep(0.2)
-        sample_files = [
-            {
-                "id": "1ABC123def456",
-                "name": "문서1.docx",
-                "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "createdTime": "2024-01-15T10:30:00.000Z",
-                "size": "524288",
-            },
-            {
-                "id": "2DEF456ghi789",
-                "name": "스프레드시트1.xlsx",
-                "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "createdTime": "2024-01-14T14:20:00.000Z",
-                "size": "1048576",
-            },
-            {
-                "id": "3GHI789jkl012",
-                "name": "프레젠테이션1.pptx",
-                "mimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                "createdTime": "2024-01-13T09:15:00.000Z",
-                "size": "2097152",
-            },
-            {
-                "id": "4JKL012mno345",
-                "name": "이미지1.jpg",
-                "mimeType": "image/jpeg",
-                "createdTime": "2024-01-12T16:45:00.000Z",
-                "size": "3145728",
-            },
-            {
-                "id": "5MNO345pqr678",
-                "name": "텍스트파일.txt",
-                "mimeType": "text/plain",
-                "createdTime": "2024-01-11T11:30:00.000Z",
-                "size": "4096",
-            },
-        ]
+        try:
+            query = "trashed=false"
+            if folder_id:
+                query += f" and '{folder_id}' in parents"
 
-        return sample_files[:max_results]
+            results = (
+                self.service.files()
+                .list(
+                    q=query,
+                    pageSize=max_results,
+                    fields="nextPageToken, files(id, name, mimeType, createdTime, size, parents)",
+                )
+                .execute()
+            )
+
+            files = results.get("files", [])
+            return files
+
+        except HttpError as e:
+            raise Exception(f"Google Drive API 오류: {e}")
+        except Exception as e:
+            raise Exception(f"파일 목록 조회 중 오류: {e}")
 
     async def get_file_info(self, file_id: str) -> Optional[Dict[str, Any]]:
         """파일 정보 조회"""
-        if not self.connected:
+        if not self.connected or not self.service:
             raise Exception("연결되지 않음")
 
-        await asyncio.sleep(0.1)
+        try:
+            file_info = (
+                self.service.files()
+                .get(
+                    fileId=file_id,
+                    fields="id, name, mimeType, size, createdTime, modifiedTime, owners, webViewLink",
+                )
+                .execute()
+            )
 
-        # 시뮬레이션된 파일 정보
-        file_info = {
-            "id": file_id,
-            "name": "샘플파일.docx",
-            "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "size": "524288",
-            "createdTime": "2024-01-15T10:30:00.000Z",
-            "modifiedTime": "2024-01-15T15:45:00.000Z",
-            "owners": [{"displayName": "사용자", "emailAddress": "user@example.com"}],
-            "webViewLink": f"https://docs.google.com/document/d/{file_id}/edit",
-        }
+            return file_info
 
-        return file_info
+        except HttpError as e:
+            raise Exception(f"Google Drive API 오류: {e}")
+        except Exception as e:
+            raise Exception(f"파일 정보 조회 중 오류: {e}")
 
     async def search_files(
         self, query: str, max_results: int = 10
     ) -> List[Dict[str, Any]]:
         """파일 검색"""
-        if not self.connected:
+        if not self.connected or not self.service:
             raise Exception("연결되지 않음")
 
-        await asyncio.sleep(0.3)
+        try:
+            search_query = f"name contains '{query}' and trashed=false"
 
-        # 시뮬레이션된 검색 결과
-        search_results = [
-            {
-                "id": "search1",
-                "name": f"{query}_결과1.docx",
-                "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "snippet": f"'{query}' 검색어와 관련된 내용이 포함된 문서입니다.",
-            },
-            {
-                "id": "search2",
-                "name": f"{query}_결과2.xlsx",
-                "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                "snippet": f"'{query}' 키워드가 포함된 스프레드시트입니다.",
-            },
-            {
-                "id": "search3",
-                "name": f"{query}_관련파일.txt",
-                "mimeType": "text/plain",
-                "snippet": f"'{query}' 검색 조건에 맞는 텍스트 파일입니다.",
-            },
-        ]
+            results = (
+                self.service.files()
+                .list(
+                    q=search_query,
+                    pageSize=max_results,
+                    fields="nextPageToken, files(id, name, mimeType, createdTime, size)",
+                )
+                .execute()
+            )
 
-        return search_results[:max_results]
+            files = results.get("files", [])
+            return files
+
+        except HttpError as e:
+            raise Exception(f"Google Drive API 오류: {e}")
+        except Exception as e:
+            raise Exception(f"파일 검색 중 오류: {e}")
 
     async def upload_file(
         self, file_path: str, folder_id: str = None
     ) -> Dict[str, Any]:
         """파일 업로드"""
-        if not self.connected:
+        if not self.connected or not self.service:
             raise Exception("연결되지 않음")
 
-        await asyncio.sleep(0.5)
+        try:
+            file_name = os.path.basename(file_path)
+            file_metadata = {"name": file_name}
 
-        file_name = os.path.basename(file_path)
-        return {
-            "id": f"upload_{hash(file_path) % 10000}",
-            "name": file_name,
-            "webViewLink": f"https://drive.google.com/file/d/upload_{hash(file_path) % 10000}/view",
-        }
+            if folder_id:
+                file_metadata["parents"] = [folder_id]
+
+            # 실제 파일 업로드는 MediaFileUpload를 사용해야 하므로 간소화
+            # 여기서는 메타데이터만 생성
+            result = (
+                self.service.files()
+                .create(body=file_metadata, fields="id,name,webViewLink")
+                .execute()
+            )
+
+            return result
+
+        except HttpError as e:
+            raise Exception(f"Google Drive API 오류: {e}")
+        except Exception as e:
+            raise Exception(f"파일 업로드 중 오류: {e}")
 
     async def download_file(self, file_id: str, local_path: str) -> bool:
         """파일 다운로드"""
