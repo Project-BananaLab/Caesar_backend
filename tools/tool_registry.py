@@ -89,8 +89,14 @@ class ToolRegistry:
                     "search_files",
                     "get_file_info",
                     "upload_file",
+                    "delete_file",
                 ],
-                "google_calendar": ["list_calendars", "create_event", "delete_event"],
+                "google_calendar": [
+                    "list_calendars",
+                    "create_event",
+                    "delete_event",
+                    "list_events",
+                ],
                 "slack": [
                     "send_message",
                     "list_channels",
@@ -135,17 +141,59 @@ class ToolRegistry:
 
         async def executor(tool_name_param: str, **kwargs):
             try:
+                # 도구명에서 접두사 제거하여 실제 메서드명 찾기
+                actual_method_name = tool_name
+                if "_" in tool_name:
+                    # google_drive_list_files -> list_files
+                    # slack_list_channels -> list_channels
+                    # google_calendar_create_event -> create_event
+                    parts = tool_name.split("_")
+                    if len(parts) >= 2:
+                        if parts[0] in ["google", "slack", "notion"] and parts[1] in [
+                            "drive",
+                            "calendar",
+                        ]:
+                            actual_method_name = "_".join(
+                                parts[2:]
+                            )  # google_drive_list_files -> list_files
+                        elif parts[0] in ["slack", "notion"]:
+                            actual_method_name = "_".join(
+                                parts[1:]
+                            )  # slack_list_channels -> list_channels
+                        else:
+                            actual_method_name = tool_name
+
+                print(f"🔧 도구 실행: {tool_name} -> 메서드: {actual_method_name}")
+
                 # MCP 서버의 메서드 호출
-                if hasattr(mcp_server, tool_name):
-                    method = getattr(mcp_server, tool_name)
+                if hasattr(mcp_server, actual_method_name):
+                    method = getattr(mcp_server, actual_method_name)
                     if callable(method):
                         # query 파라미터를 적절한 파라미터로 변환
                         query = kwargs.get("query", "")
 
-                        # 도구별 파라미터 매핑
-                        if tool_name == "list_calendars":
+                        # JSON 형태의 입력 처리
+                        if isinstance(query, dict):
+                            # 이미 딕셔너리 형태인 경우
+                            pass
+                        elif query.startswith("{") and query.endswith("}"):
+                            try:
+                                import json
+
+                                query_dict = json.loads(query)
+                                # 채널 정보가 있는 경우 추출
+                                if "channel" in query_dict:
+                                    query = query_dict["channel"]
+                                # 이름 정보가 있는 경우 추출 (채널 생성용)
+                                elif "name" in query_dict:
+                                    query = query_dict["name"]
+                            except:
+                                pass
+
+                        # 도구별 파라미터 매핑 (실제 메서드명 기준)
+                        if actual_method_name == "list_calendars":
                             return await method()
-                        elif tool_name == "create_event":
+                        elif actual_method_name == "create_event":
                             # query에서 이벤트 정보 파싱
                             from datetime import datetime, timedelta
                             import json
@@ -213,16 +261,75 @@ class ToolRegistry:
                                 )
                             except Exception as e:
                                 return f"이벤트 생성 파라미터 오류: {e}"
-                        elif tool_name == "delete_event":
+                        elif actual_method_name == "delete_event":
                             return await method(event_id=query)
-                        elif tool_name in ["list_files", "search_files"]:
+                        elif actual_method_name == "list_events":
+                            # query를 검색어로 사용
                             return (
                                 await method(query=query) if query else await method()
                             )
-                        elif tool_name == "get_file_info":
+                        elif actual_method_name == "list_files":
+                            # list_files는 folder_id 파라미터 사용
+                            return await method()
+                        elif actual_method_name == "search_files":
+                            # search_files는 query 파라미터 사용
+                            return (
+                                await method(query=query) if query else await method()
+                            )
+                        elif actual_method_name == "get_file_info":
                             return await method(file_id=query)
-                        elif tool_name == "upload_file":
+                        elif actual_method_name == "upload_file":
                             return await method(file_path=query)
+                        elif actual_method_name == "delete_file":
+                            return await method(file_id=query)
+                        elif actual_method_name == "list_channels":
+                            return await method()
+                        elif actual_method_name == "get_channel_history":
+                            return await method(channel=query, limit=20)
+                        elif actual_method_name == "send_message":
+                            # send_message는 channel과 text가 필요
+                            if "," in query:
+                                parts = query.split(",", 1)
+                                channel = parts[0].strip()
+                                text = parts[1].strip()
+                                return await method(channel=channel, text=text)
+                            else:
+                                return "❌ send_message는 '채널,메시지' 형식으로 입력해주세요"
+                        elif actual_method_name == "create_channel":
+                            return await method(name=query)
+                        elif actual_method_name == "get_user_info":
+                            return await method(user_id=query)
+                        elif actual_method_name == "search_messages":
+                            return await method(query=query)
+                        elif actual_method_name == "invite_to_channel":
+                            # invite_to_channel는 channel과 users가 필요
+                            if "," in query:
+                                parts = query.split(",", 1)
+                                channel = parts[0].strip()
+                                users = [user.strip() for user in parts[1].split(",")]
+                                return await method(channel=channel, users=users)
+                            else:
+                                return "❌ invite_to_channel는 '채널,사용자1,사용자2' 형식으로 입력해주세요"
+                        elif actual_method_name == "upload_file":
+                            # Slack upload_file는 channel과 file_path가 필요
+                            if "," in query:
+                                parts = query.split(",", 1)
+                                channel = parts[0].strip()
+                                file_path = parts[1].strip()
+                                return await method(
+                                    channel=channel, file_path=file_path
+                                )
+                            else:
+                                return "❌ upload_file는 '채널,파일경로' 형식으로 입력해주세요"
+                        elif actual_method_name == "set_status":
+                            # set_status는 text와 emoji가 필요
+                            if "," in query:
+                                parts = query.split(",", 1)
+                                text = parts[0].strip()
+                                emoji = parts[1].strip()
+                                return await method(text=text, emoji=emoji)
+                            else:
+                                return await method(text=query)
                         elif "slack_" in tool_name:
                             return (
                                 await method(query=query) if query else await method()
@@ -236,9 +343,10 @@ class ToolRegistry:
                             return (
                                 await method(query=query) if query else await method()
                             )
-                return f"{tool_name} 실행 완료"
+                else:
+                    return f"❌ 메서드를 찾을 수 없습니다: {actual_method_name} (원본: {tool_name})"
             except Exception as e:
-                return f"도구 실행 오류: {e}"
+                return f"❌ 도구 실행 오류: {e}"
 
         return executor
 
@@ -298,11 +406,21 @@ class ToolRegistry:
         """등록된 모든 Tool 정의 반환"""
         return [tool["definition"] for tool in self.tools.values()]
 
+    def get_available_tools(self) -> List[Dict[str, Any]]:
+        """사용 가능한 모든 도구 목록 반환 (get_all_tools와 동일)"""
+        return self.get_all_tools()
+
     def get_tool_definition(self, tool_name: str) -> Dict[str, Any]:
         """특정 Tool 정의 반환"""
         if tool_name not in self.tools:
             raise ValueError(f"Tool not found: {tool_name}")
         return self.tools[tool_name]["definition"]
+
+    async def get_tool_executor(self, tool_name: str):
+        """특정 도구의 실행기 반환"""
+        if tool_name not in self.tools:
+            return None
+        return self.tools[tool_name].get("executor")
 
     async def execute_tool(self, tool_name: str, **kwargs) -> Any:
         """Tool 실행"""

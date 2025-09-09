@@ -76,6 +76,20 @@ class GoogleCalendarServer:
         self.connected = False
         print("Google Calendar MCP 서버 연결 해제")
 
+    async def get_available_tools(self) -> List[str]:
+        """사용 가능한 도구 목록 조회"""
+        if not self.connected:
+            raise Exception("연결되지 않음")
+
+        return [
+            "list_calendars",
+            "list_events",
+            "create_event",
+            "update_event",
+            "delete_event",
+            "find_free_time",
+        ]
+
     async def list_calendars(self) -> List[Dict[str, Any]]:
         """캘린더 목록 조회"""
         if not self.connected or not self.service:
@@ -174,20 +188,89 @@ class GoogleCalendarServer:
         await asyncio.sleep(0.3)
         return {"id": event_id, "status": "confirmed", **updates}
 
+    async def list_events(
+        self, start_date: str = None, end_date: str = None, query: str = None
+    ) -> List[Dict[str, Any]]:
+        """이벤트 목록 조회"""
+        if not self.connected or not self.service:
+            raise Exception("연결되지 않음")
+
+        try:
+            # 기본값: 오늘부터 1주일 (한국 시간대)
+            from datetime import datetime, timedelta
+            import pytz
+
+            seoul_tz = pytz.timezone("Asia/Seoul")
+            now = datetime.now(seoul_tz)
+
+            if not start_date:
+                # 오늘 00:00부터 검색
+                start_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                start_date = start_time.isoformat()
+            if not end_date:
+                # 1주일 후까지 검색
+                end_time = now + timedelta(days=7)
+                end_date = end_time.isoformat()
+
+            print(
+                f"🔍 이벤트 검색 - 시작: {start_date}, 종료: {end_date}, 검색어: {query}"
+            )
+
+            # 이벤트 조회
+            events_result = (
+                self.service.events()
+                .list(
+                    calendarId="primary",
+                    timeMin=start_date,
+                    timeMax=end_date,
+                    q=query,  # 검색어
+                    singleEvents=True,
+                    orderBy="startTime",
+                    maxResults=50,  # 최대 50개 결과
+                )
+                .execute()
+            )
+
+            events = events_result.get("items", [])
+            print(f"🔍 검색 결과: {len(events)}개 이벤트 발견")
+
+            # 각 이벤트 정보 출력
+            for i, event in enumerate(events):
+                summary = event.get("summary", "제목 없음")
+                start = event.get("start", {}).get(
+                    "dateTime", event.get("start", {}).get("date", "시간 없음")
+                )
+                print(f"  {i+1}. {summary} - {start}")
+
+            return events
+
+        except HttpError as e:
+            raise Exception(f"Google Calendar API 오류: {e}")
+        except Exception as e:
+            raise Exception(f"이벤트 조회 중 오류: {e}")
+
     async def delete_event(self, event_id: str) -> bool:
         """이벤트 삭제"""
         if not self.connected or not self.service:
             raise Exception("연결되지 않음")
 
         try:
+            # event_id 정리 (공백 제거)
+            clean_event_id = event_id.strip()
+            print(f"🗑️ 이벤트 삭제 시도: {clean_event_id}")
+
             self.service.events().delete(
-                calendarId="primary", eventId=event_id
+                calendarId="primary", eventId=clean_event_id
             ).execute()
+
+            print(f"✅ 이벤트 삭제 성공: {clean_event_id}")
             return True
 
         except HttpError as e:
+            print(f"❌ 이벤트 삭제 실패: {e}")
             raise Exception(f"Google Calendar API 오류: {e}")
         except Exception as e:
+            print(f"❌ 이벤트 삭제 오류: {e}")
             raise Exception(f"이벤트 삭제 중 오류: {e}")
 
     async def find_free_time(

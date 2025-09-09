@@ -19,8 +19,10 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_community.llms import Ollama
 from tools.tool_registry import tool_registry
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-
+today_str = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
 # .env 파일 로드
 load_dotenv()
 
@@ -132,35 +134,80 @@ class ReactAgent:
                 self.agent_executor = None
                 return
 
+            # 현재 날짜 정보 생성
+            from datetime import datetime
+            import pytz
+
+            seoul_tz = pytz.timezone("Asia/Seoul")
+            now = datetime.now(seoul_tz)
+            from datetime import timedelta
+
+            today = now.strftime("%Y-%m-%d")
+            tomorrow = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+            yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+            current_datetime = now.strftime("%Y-%m-%dT%H:%M:%S+09:00")
+
             # ReAct 프롬프트 템플릿 정의 (LangChain 표준)
             react_prompt = PromptTemplate.from_template(
-                """
+                f"""
 You are Caesar AI Assistant. Always answer in Korean.
 
-You have access to the following tools:
-{tools}
+**CURRENT DATE & TIME INFORMATION:**
+- 오늘 (Today): {today}
+- 내일 (Tomorrow): {tomorrow}  
+- 어제 (Yesterday): {yesterday}
+- 현재 시간: {current_datetime}
+- 시간대: Asia/Seoul (UTC+9)
 
-IMPORTANT INSTRUCTIONS:
+You have access to the following tools:
+{{tools}}
+
+**CRITICAL DATE HANDLING RULES:**
+- When user says "오늘" (today) → ALWAYS use {today}
+- When user says "내일" (tomorrow) → ALWAYS use {tomorrow}
+- When user says "어제" (yesterday) → ALWAYS use {yesterday}
+- NEVER use 2023 or any hardcoded old year - ALWAYS use the current dates shown above
+- For times: 점심=12:00, 저녁=18:00, 아침=08:00, 오후=PM, 오전=AM
+
+**IMPORTANT INSTRUCTIONS:**
 - If you can answer the question using your own knowledge WITHOUT needing tools, go directly to Final Answer
 - Only use tools when they are specifically needed for the task
 - For general questions (like weather, news, facts), provide helpful answers using your knowledge
 - When no tool can help, still provide the most helpful answer possible
 
+**SLACK CHANNEL NAMING RULES:**
+- Channel names must be lowercase letters, numbers, and hyphens (-) only
+- No spaces, underscores, special characters, or Korean characters allowed
+- Maximum 21 characters
+- Must start with a letter
+- Examples: "caesar-test", "project-alpha", "team-dev"
+
+**CRITICAL FORMAT RULES:**
+- ALWAYS follow the exact format below
+- After each Thought, you MUST either use Action OR provide Final Answer
+- NEVER write free text without proper format keywords
+- If you have enough information, immediately provide Final Answer
+
 Use the following format:
 
 Question: the input question you must answer
 Thought: you should always think about what to do
-Action: the action to take, should be one of [{tool_names}] OR skip if not needed
-Action Input: the input to the action (only if using a tool)
-Observation: the result of the action (only if using a tool)
+Action: the action to take, should be one of [{{tool_names}}]
+Action Input: the input to the action
+Observation: the result of the action
 ... (this Thought/Action/Action Input/Observation can repeat N times)
 Thought: I now know the final answer
 Final Answer: the final answer in Korean
 
+**WHEN TO USE FINAL ANSWER:**
+- When you have enough information to answer the question
+- When no more tools are needed
+- ALWAYS start Final Answer with "Final Answer:" keyword
+
 Begin!
 
-Question: {input}
-Thought:{agent_scratchpad}
+Question: {{input}}
+Thought:{{agent_scratchpad}}
 """
             )
 
@@ -174,8 +221,9 @@ Thought:{agent_scratchpad}
                 agent=self.agent,
                 tools=self.tools,
                 verbose=True,
-                handle_parsing_errors=True,
-                max_iterations=5,
+                handle_parsing_errors="Check your output and make sure it conforms to the format! Use 'Final Answer:' to conclude.",
+                max_iterations=8,
+                max_execution_time=60,
                 return_intermediate_steps=False,
             )
 
@@ -229,27 +277,38 @@ Thought:{agent_scratchpad}
             tool_keywords = [
                 "파일",
                 "캘린더",
+                "구글",
+                "google",
                 "슬랙",
+                "slack",
                 "노션",
+                "notion",
                 "문서",
                 "이벤트",
                 "일정",
                 "메시지",
                 "전송",
                 "업로드",
+                "저장",
+                "생성",
+                "추가",
             ]
 
             message_lower = message.lower()
             has_general = any(keyword in message_lower for keyword in general_keywords)
             has_tool = any(keyword in message_lower for keyword in tool_keywords)
 
-            # 일반적인 질문이고 도구 관련 키워드가 없으면 직접 LLM으로 답변
-            if has_general and not has_tool:
-                print("🤖 일반 질문으로 판단 - LLM 직접 응답")
-                return await self._chat_without_tools(message)
+            print(f"🔍 키워드 분석: general={has_general}, tool={has_tool}")
+            print(f"🔍 메시지: {message_lower}")
 
-            # ReAct 에이전트 실행
-            response = await self._execute_agent(message)
+            if has_tool:
+                # 🛠️ 도구 관련 키워드가 있으면 무조건 ReAct 에이전트 실행
+                print("🛠️ 도구 사용 질문으로 판단 - ReAct 에이전트 실행")
+                response = await self._execute_agent(message)
+            else:
+                # 🤖 도구 관련 없으면 LLM 직접 응답
+                print("🤖 일반 질문으로 판단 - LLM 직접 응답")
+                response = await self._chat_without_tools(message)
 
             # 응답을 히스토리에 추가
             self.conversation_history.append(

@@ -85,6 +85,22 @@ class GoogleDriveMCP:
         self.connected = False
         print("Google Drive MCP 서버 연결 해제")
 
+    async def get_available_tools(self) -> List[str]:
+        """사용 가능한 도구 목록 조회"""
+        if not self.connected:
+            raise Exception("연결되지 않음")
+
+        return [
+            "list_files",
+            "search_files",
+            "get_file_info",
+            "upload_file",
+            "delete_file",
+            "download_file",
+            "create_folder",
+            "share_file",
+        ]
+
     async def list_files(
         self, folder_id: str = None, max_results: int = 10
     ) -> List[Dict[str, Any]]:
@@ -213,6 +229,40 @@ class GoogleDriveMCP:
             "name": name,
             "mimeType": "application/vnd.google-apps.folder",
         }
+
+    async def delete_file(self, file_id: str) -> bool:
+        """파일 삭제"""
+        if not self.connected:
+            raise Exception("Google Drive에 연결되지 않음")
+
+        try:
+            print(f"📁 파일 삭제 중: {file_id}")
+
+            # 파일 정보 먼저 확인
+            file_info = (
+                self.service.files()
+                .get(fileId=file_id, fields="name,mimeType")
+                .execute()
+            )
+            file_name = file_info.get("name", "Unknown")
+
+            # 파일 삭제 실행
+            self.service.files().delete(fileId=file_id).execute()
+
+            print(f"✅ 파일이 성공적으로 삭제되었습니다: {file_name}")
+            return True
+
+        except HttpError as e:
+            print(f"❌ 파일 삭제 실패: {e}")
+            if e.resp.status == 404:
+                return f"❌ 파일을 찾을 수 없습니다: {file_id}"
+            elif e.resp.status == 403:
+                return f"❌ 파일 삭제 권한이 없습니다: {file_id}"
+            else:
+                return f"❌ 파일 삭제 오류: {e}"
+        except Exception as e:
+            print(f"❌ 파일 삭제 중 오류 발생: {e}")
+            return f"❌ 파일 삭제 중 오류 발생: {e}"
 
     async def share_file(self, file_id: str, email: str, role: str = "reader") -> bool:
         """파일 공유"""

@@ -77,17 +77,17 @@ class NotionMCP:
 
         # Smithery를 통해 사용 가능한 Notion 도구들
         tools = [
-            "notion_query_database",
-            "notion_create_page",
-            "notion_update_page",
-            "notion_delete_page",
-            "notion_search",
-            "notion_append_block",
-            "notion_get_page",
-            "notion_get_database",
-            "notion_create_database",
-            "notion_list_users",
-            "notion_get_block_children",
+            "query_database",
+            "create_page",
+            "update_page",
+            "delete_page",
+            "search",
+            "append_block",
+            "get_page",
+            "get_database",
+            "create_database",
+            "list_users",
+            "get_block_children",
         ]
 
         return tools
