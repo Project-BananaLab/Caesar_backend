@@ -10,13 +10,6 @@ import chromadb
 # .env 파일에서 환경 변수 로드
 load_dotenv()
 
-# LangSmith 설정
-# os.environ["LANGCHAIN_TRACING_V2"] = "true"
-# if os.getenv("LANGCHAIN_API_KEY") is None:
-#     print("경고: LANGCHAIN_API_KEY 환경 변수가 설정되지 않았습니다.")
-# if os.getenv("LANGCHAIN_PROJECT") is None:
-#     print("경고: LANGCHAIN_PROJECT 환경 변수가 설정되지 않았습니다.")
-
 # Notion API 토큰과 시작 페이지 ID 설정
 NOTION_TOKEN = os.getenv("NOTION_TOKEN")
 START_PAGE_ID = '264120560ff680198c0fefbbe17bfc2c' # Caesar 프로젝트의 시작 페이지 ID
