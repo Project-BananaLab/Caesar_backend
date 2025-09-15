@@ -376,6 +376,15 @@ def process_database_block_enhanced(block: dict) -> str:
             page_id = page['id']
             properties = page.get('properties', {})
             
+            # 페이지 타이틀 추출
+            page_title = "제목 없음"
+            for prop_name, prop_data in properties.items():
+                if prop_data.get('type') == 'title':
+                    page_title = get_property_value(prop_data) or "제목 없음"
+                    break
+            
+            result += f"\n=== 페이지: {page_title} ===\n"
+            
             # 페이지 속성 정보 추가
             result += f"\n--- 페이지 속성 ---\n"
             for prop_name, prop_data in properties.items():
@@ -387,10 +396,10 @@ def process_database_block_enhanced(block: dict) -> str:
             page_content = process_all_content_recursively(page_id, depth=1)
             result += page_content + "\n"
 
+        return result
+
     except Exception as e:
         return f"데이터베이스 처리 중 오류 발생: {str(e)}"
-
-    return result
 #-------------------------------------------------------------------------------------------------------------------#
 
 def get_text_from_block(block: dict) -> str:
