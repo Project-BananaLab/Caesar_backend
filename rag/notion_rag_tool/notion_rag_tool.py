@@ -20,11 +20,14 @@ import os
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 import chromadb
 
 # .env 파일에서 환경 변수 로드
 load_dotenv()
+
+NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+START_PAGE_ID = '264120560ff680198c0fefbbe17bfc2c' # 시작 페이지 ID. 나중에 Frontend에서 받아올 것
 
 class NotionRAGService:
     """Notion RAG 서비스 클래스"""
@@ -71,11 +74,8 @@ class NotionRAGService:
             # 리트리버 생성
             self.retriever = self.vectorstore.as_retriever()
             
-            # GPT-5-nano 모델 초기화
-            self.llm = ChatOpenAI(model_name="gpt-5-nano", temperature=0)
-            
-            # RAG 체인 구성
-            self._setup_rag_chain()
+            # gpt-4o-mini 모델 초기화
+            self.llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0)
             
         except Exception as e:
             print(f"Notion RAG 서비스 초기화 실패: {e}")
@@ -83,14 +83,16 @@ class NotionRAGService:
     
     def search(self, query: str) -> str:
         """Notion 문서에서 질문에 대한 답변 검색"""
-        if self.rag_chain is None:
-            return "Notion RAG 시스템이 초기화되지 않았습니다. 환경 변수를 확인해주세요."
+
+        return self.retriever.invoke(query)
+        # if self.rag_chain is None:
+        #     return "Notion RAG 시스템이 초기화되지 않았습니다. 환경 변수를 확인해주세요."
         
-        try:
-            # return self.rag_chain.invoke(query)
-            return self.retriever.invoke(query)
-        except Exception as e:
-            return f"검색 중 오류가 발생했습니다: {str(e)}"
+        # try:
+        #     return self.rag_chain.invoke(query)
+        #     # return self.retriever.invoke(query)
+        # except Exception as e:
+        #     return f"검색 중 오류가 발생했습니다: {str(e)}"
 
 
 # 전역 서비스 인스턴스
@@ -103,18 +105,13 @@ def notion_rag_search(query: str) -> str:
     Notion 문서에서 정보를 검색하고 질문에 답변합니다.
     
     이 도구는 사전에 임베딩된 Notion 문서들을 검색하여 
-    사용자의 질문과 관련된 정보를 찾아 GPT-5-nano 모델을 통해 답변을 생성합니다.
+    사용자의 질문과 관련된 정보를 찾아 gpt-4o-mini모델을 통해 답변을 생성합니다.
     
     Args:
         query (str): 검색하고자 하는 질문이나 키워드
         
     Returns:
         str: Notion 문서를 기반으로 한 답변
-        
-    사용 예시:
-        - "프로젝트 일정은 어떻게 되나요?"
-        - "회의록에서 결정사항을 알려주세요"
-        - "개발 가이드라인이 무엇인가요?"
     """
     return _notion_rag_service.search(query)
 
