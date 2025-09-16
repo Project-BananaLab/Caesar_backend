@@ -21,7 +21,7 @@ langchain==0.3.27
 langchain-core==0.3.76
 langchain-community==0.3.29
 langchain-openai==0.3.33
-langchain-chroma==0.3.29
+langchain-chroma
 langgraph>=0.2.80
 langgraph-checkpoint>=2.1.0
 langgraph-sdk>=0.1.70
