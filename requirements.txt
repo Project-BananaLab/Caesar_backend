@@ -75,32 +75,11 @@ flake8>=7.1
 # TODO: 공식 MCP 클라이언트 라이브러리 공개 시 버전 핀
 # mcp-client
 
-
-
-
-# # Caesar MCP 프로젝트 의존성
-
-# # FastAPI 백엔드
-# fastapi==0.104.1
-# uvicorn[standard]==0.24.0
-# pydantic[email]==2.5.0
-
-# # 데이터베이스
-# sqlalchemy==2.0.23
-# alembic==1.13.0
-
-# # MySQL 지원
-# PyMySQL==1.1.0
-
-# # MCP 관련
-# # TODO: 공식 MCP 클라이언트 라이브러리 추가
-# # mcp-client
-
-# # LangChain/LangGraph (Agent 용)
-# langchain==0.1.0
-# langgraph==0.0.20
-# langchain-community==0.0.10
-# langchain-openai==0.0.5
+# LangChain/LangGraph (Agent 용)
+langchain==0.1.0
+langgraph==0.0.20
+langchain-community==0.0.10
+langchain-openai==0.0.5
 
 # # RAG 관련
 # # chromadb==0.4.18  # Vector DB

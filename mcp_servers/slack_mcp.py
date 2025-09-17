@@ -18,7 +18,6 @@ class SlackMCP:
         self.client = None
         self.connected = False
         self.base_url = "https://slack.com/api"
-        self.session = None
 
     async def connect(self) -> bool:
         """MCP 서버 연결"""
@@ -29,55 +28,48 @@ class SlackMCP:
 
             print("Slack MCP 서버에 연결 중...")
 
-            # aiohttp 세션 생성
-            self.session = aiohttp.ClientSession()
-
             # 토큰 검증 (auth.test API 호출)
             headers = {
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json",
             }
 
-            async with self.session.get(
-                f"{self.base_url}/auth.test", headers=headers
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if data.get("ok"):
-                        self.connected = True
-                        print(
-                            f"✅ Slack MCP 서버 연결 성공 - 팀: {data.get('team', 'Unknown')}"
-                        )
-                        return True
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    f"{self.base_url}/auth.test", headers=headers
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("ok"):
+                            self.connected = True
+                            print(
+                                f"✅ Slack MCP 서버 연결 성공 - 팀: {data.get('team', 'Unknown')}"
+                            )
+                            return True
+                        else:
+                            print(
+                                f"❌ Slack 인증 실패: {data.get('error', 'Unknown error')}"
+                            )
+                            return False
                     else:
-                        print(
-                            f"❌ Slack 인증 실패: {data.get('error', 'Unknown error')}"
-                        )
+                        print(f"❌ Slack API 호출 실패: HTTP {response.status}")
                         return False
-                else:
-                    print(f"❌ Slack API 호출 실패: HTTP {response.status}")
-                    return False
 
         except Exception as e:
             print(f"Slack 연결 실패: {e}")
-            if self.session:
-                await self.session.close()
-                self.session = None
             return False
 
     async def disconnect(self):
         """MCP 서버 연결 해제"""
         self.connected = False
-        if self.session:
-            await self.session.close()
-            self.session = None
         print("Slack MCP 서버 연결 해제")
 
     async def _api_call(
         self, method: str, data: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Slack API 호출 헬퍼 메서드"""
-        if not self.connected or not self.session:
+        if not self.connected:
             raise Exception("연결되지 않음")
 
         headers = {
@@ -88,14 +80,17 @@ class SlackMCP:
         url = f"{self.base_url}/{method}"
 
         try:
-            if data:
-                async with self.session.post(
-                    url, headers=headers, json=data
-                ) as response:
-                    return await response.json()
-            else:
-                async with self.session.get(url, headers=headers) as response:
-                    return await response.json()
+            # 매번 새로운 세션을 사용하여 컨텍스트 문제 해결
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                if data:
+                    async with session.post(
+                        url, headers=headers, json=data
+                    ) as response:
+                        return await response.json()
+                else:
+                    async with session.get(url, headers=headers) as response:
+                        return await response.json()
         except Exception as e:
             raise Exception(f"API 호출 실패: {e}")
 
@@ -106,18 +101,18 @@ class SlackMCP:
 
         # 실제 사용 가능한 도구 목록
         tools = [
-            "slack_send_message",
-            "slack_list_channels",
-            "slack_get_channel_history",
-            "slack_create_channel",
-            "slack_invite_to_channel",
-            "slack_upload_file",
-            "slack_set_status",
-            "slack_get_user_info",
-            "slack_search_messages",
-            "slack_pin_message",
-            "slack_react_to_message",
-            "slack_schedule_message",
+            "send_message",
+            "list_channels",
+            "get_channel_history",
+            "create_channel",
+            "invite_to_channel",
+            "upload_file",
+            "set_status",
+            "get_user_info",
+            "search_messages",
+            "pin_message",
+            "react_to_message",
+            "schedule_message",
         ]
 
         return tools
@@ -196,14 +191,67 @@ class SlackMCP:
             )
 
             if not response.get("ok"):
-                raise Exception(
-                    f"채널 히스토리 조회 실패: {response.get('error', 'Unknown error')}"
-                )
+                error = response.get("error", "Unknown error")
+                if error == "channel_not_found":
+                    raise Exception(
+                        f"채널 히스토리 조회 실패: 채널을 찾을 수 없거나 Bot이 해당 채널에 접근할 권한이 없습니다. (채널: {channel})"
+                    )
+                elif error == "missing_scope":
+                    raise Exception(
+                        f"채널 히스토리 조회 실패: Bot에 'channels:history' 권한이 필요합니다."
+                    )
+                else:
+                    raise Exception(f"채널 히스토리 조회 실패: {error}")
 
             return response.get("messages", [])
 
         except Exception as e:
             raise Exception(f"채널 히스토리 조회 중 오류: {e}")
+
+    def _normalize_channel_name(self, name: str) -> str:
+        """채널명을 Slack 규칙에 맞게 정규화"""
+        # 한글 → 영문 변환 맵핑
+        korean_to_english = {
+            "시저": "caesar",
+            "테스트": "test",
+            "프로젝트": "project",
+            "개발": "dev",
+            "팀": "team",
+            "회의": "meeting",
+            "공지": "notice",
+            "일반": "general",
+            "업무": "work",
+            "질문": "question",
+            "도움": "help",
+            "버그": "bug",
+            "피드백": "feedback",
+        }
+
+        # 한글을 영문으로 변환
+        normalized = name.lower()
+        for korean, english in korean_to_english.items():
+            normalized = normalized.replace(korean, english)
+
+        # 숫자는 유지, 특수문자와 공백은 하이픈으로 변환
+        import re
+
+        normalized = re.sub(r"[^a-z0-9]", "-", normalized)
+
+        # 연속된 하이픈 제거
+        normalized = re.sub(r"-+", "-", normalized)
+
+        # 시작/끝 하이픈 제거
+        normalized = normalized.strip("-")
+
+        # 21자 제한
+        if len(normalized) > 21:
+            normalized = normalized[:21].rstrip("-")
+
+        # 빈 문자열이면 기본값
+        if not normalized:
+            normalized = "new-channel"
+
+        return normalized
 
     async def create_channel(
         self, name: str, is_private: bool = False
@@ -213,15 +261,56 @@ class SlackMCP:
             raise Exception("연결되지 않음")
 
         try:
+            # 채널명 정규화
+            original_name = name
+            normalized_name = self._normalize_channel_name(name)
+
+            print(f"📋 채널명 변환: '{original_name}' → '{normalized_name}'")
+
             method = "conversations.create"
-            data = {"name": name, "is_private": is_private}
+            data = {"name": normalized_name, "is_private": is_private}
 
             response = await self._api_call(method, data)
 
             if not response.get("ok"):
-                raise Exception(
-                    f"채널 생성 실패: {response.get('error', 'Unknown error')}"
-                )
+                error = response.get("error", "Unknown error")
+                if error == "invalid_name_specials":
+                    raise Exception(
+                        f"채널 생성 실패: 채널명에 허용되지 않는 문자가 포함되어 있습니다. "
+                        f"채널명은 소문자, 숫자, 하이픈(-)만 사용 가능합니다. "
+                        f"시도한 이름: '{name}'"
+                    )
+                elif error == "name_taken":
+                    raise Exception(
+                        f"채널 생성 실패: '{name}' 이름이 이미 사용 중입니다."
+                    )
+                elif error == "invalid_name":
+                    raise Exception(
+                        f"채널 생성 실패: 유효하지 않은 채널명입니다. "
+                        f"채널명은 21자 이하, 소문자로 시작해야 합니다. (시도한 이름: '{name}')"
+                    )
+                else:
+                    raise Exception(f"채널 생성 실패: {error}")
+
+            # 성공 응답에 변환 정보 추가
+            response["original_name"] = original_name
+            response["normalized_name"] = normalized_name
+
+            # 한글 이름이 변환된 경우 채널 설명에 원래 이름 추가
+            if original_name != normalized_name:
+                try:
+                    channel_id = response.get("channel", {}).get("id")
+                    if channel_id:
+                        await self._api_call(
+                            "conversations.setPurpose",
+                            {
+                                "channel": channel_id,
+                                "purpose": f"원래 이름: {original_name}",
+                            },
+                        )
+                        print(f"📝 채널 설명에 원래 이름 추가: {original_name}")
+                except Exception as e:
+                    print(f"⚠️ 채널 설명 설정 실패: {e}")
 
             return response
 
